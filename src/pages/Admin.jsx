@@ -23,6 +23,7 @@ export default function Admin() {
   const [passwordInput, setPasswordInput] = useState('')
   const [draft, setDraft] = useState(emptyDraft)
   const [message, setMessage] = useState('')
+  const [syncing, setSyncing] = useState(false)
 
   if (!unlocked) {
     return (
@@ -91,7 +92,6 @@ export default function Admin() {
     }
   }
 
-  const [syncing, setSyncing] = useState(false)
   const handleSyncFromApi = async () => {
     setSyncing(true)
     setMessage('Sinkronisasi data dari API sedang berjalan...')

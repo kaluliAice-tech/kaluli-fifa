@@ -134,8 +134,7 @@ export function AppProvider({ children }) {
         throw new Error('Prediction locked. Match sudah kick-off.')
       }
 
-      const newPrediction = {
-        id: `${user.id}-${matchId}`,
+      const basePrediction = {
         user_id: user.id,
         match_id: matchId,
         round: match.round,
@@ -147,12 +146,17 @@ export function AppProvider({ children }) {
       }
 
       if (isSupabaseConfigured) {
-        const { data, error } = await supabase.from('predictions').insert(newPrediction).select().single()
+        // Let Supabase generate the id (predictions.id is a uuid column with
+        // default gen_random_uuid()) — do NOT set a custom id here.
+        const { data, error } = await supabase.from('predictions').insert(basePrediction).select().single()
         if (error) throw error
         setPredictions((prev) => [...prev, data])
         return data
       }
 
+      // Demo/local mode: predictions live in a plain JSON array in
+      // localStorage, so any unique string works fine as an id here.
+      const newPrediction = { id: `${user.id}-${matchId}`, ...basePrediction }
       const all = readLocal(LS_PREDICTIONS_KEY, DUMMY_USER_PREDICTIONS)
       const updated = [...all, newPrediction]
       writeLocal(LS_PREDICTIONS_KEY, updated)

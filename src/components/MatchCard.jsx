@@ -95,11 +95,21 @@ export default function MatchCard({
 
       <p className="text-xs text-kaluli-navy/50 font-semibold mb-3">{formatKickoff(match.kickoff_time)}</p>
 
+      {showPredictedBadge && !isFinished && (
+        <p className="text-center text-[10px] font-bold text-kaluli-red/70 uppercase tracking-wide mb-1">
+          🔮 Prediksi Kamu
+        </p>
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
           <FlagIcon flag={match.team_a_flag} />
           <span className="text-xs font-bold text-kaluli-navy text-center truncate w-full">{match.team_a}</span>
-          {isFinished && <span className="text-lg font-display font-extrabold text-kaluli-navy">{match.team_a_score ?? '-'}</span>}
+          {isFinished ? (
+            <span className="text-lg font-display font-extrabold text-kaluli-navy">{match.team_a_score ?? '-'}</span>
+          ) : showPredictedBadge ? (
+            <span className="text-lg font-display font-extrabold text-kaluli-red">{userPrediction.predicted_score_a}</span>
+          ) : null}
         </div>
 
         <span className="text-sm font-extrabold text-kaluli-navy/30 px-1">VS</span>
@@ -107,7 +117,11 @@ export default function MatchCard({
         <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
           <FlagIcon flag={match.team_b_flag} />
           <span className="text-xs font-bold text-kaluli-navy text-center truncate w-full">{match.team_b}</span>
-          {isFinished && <span className="text-lg font-display font-extrabold text-kaluli-navy">{match.team_b_score ?? '-'}</span>}
+          {isFinished ? (
+            <span className="text-lg font-display font-extrabold text-kaluli-navy">{match.team_b_score ?? '-'}</span>
+          ) : showPredictedBadge ? (
+            <span className="text-lg font-display font-extrabold text-kaluli-red">{userPrediction.predicted_score_b}</span>
+          ) : null}
         </div>
       </div>
 
@@ -119,9 +133,6 @@ export default function MatchCard({
 
       {showPredictedBadge && (
         <div className="mt-3 flex flex-col items-center gap-1.5">
-          <span className="text-[11px] font-bold text-kaluli-navy/60">
-            Skor Prediksi Kamu: {userPrediction.predicted_score_a} - {userPrediction.predicted_score_b}
-          </span>
           <span
             className={`text-[11px] font-bold px-3 py-1 rounded-full ${
               predictedCorrect

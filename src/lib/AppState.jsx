@@ -309,7 +309,20 @@ export function AppProvider({ children }) {
   // predictions stored locally in this browser.
   const adminCalculatePoints = useCallback(
     async (matchId) => {
-      const match = getMatchById(matchId)
+      // Always fetch the match FRESH from the database right before
+      // calculating — never trust the local React state here, since it can
+      // go stale if the match was edited moments earlier (e.g. multiple
+      // admin tabs open, or state not yet re-synced) and using an old
+      // winner_team would silently mark every correct pick as wrong.
+      let match
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase.from('matches').select('*').eq('id', matchId).single()
+        if (error) throw error
+        match = data
+      } else {
+        match = getMatchById(matchId)
+      }
+
       if (!match || match.status !== 'finished' || !match.winner_team) {
         throw new Error('Match belum finished / winner belum di-set.')
       }
@@ -333,7 +346,7 @@ export function AppProvider({ children }) {
               .eq('user_id', p.user_id)
             perfectPreviousRound = isPerfectRound(userPreds || [], previousRound)
           }
-          const isCorrectWinner = p.predicted_winner === match.winner_team
+          const isCorrectWinner = String(p.predicted_winner).trim() === String(match.winner_team).trim()
           const isExactScore =
             isCorrectWinner &&
             p.predicted_score_a === match.team_a_score &&
@@ -363,7 +376,7 @@ export function AppProvider({ children }) {
           if (p.match_id === matchId) {
             const roundIdx = ROUNDS.indexOf(p.round)
             const perfectPreviousRound = roundIdx > 0 ? isPerfectRound(userPreds, ROUNDS[roundIdx - 1]) : false
-            const isCorrectWinner = p.predicted_winner === match.winner_team
+            const isCorrectWinner = String(p.predicted_winner).trim() === String(match.winner_team).trim()
             const isExactScore =
               isCorrectWinner &&
               p.predicted_score_a === match.team_a_score &&

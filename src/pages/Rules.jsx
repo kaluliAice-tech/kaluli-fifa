@@ -3,8 +3,8 @@ import BottomNav from '../components/BottomNav.jsx'
 
 const POINT_ROWS = [
   { round: 'Quarter Final', base: '+15', multiplier: '— (ronde pertama)' },
-  { round: 'Semi Final', base: '+20', multiplier: 'x2 = +40 jika QF benar' },
-  { round: 'Final', base: '+30', multiplier: 'x3 = +90 jika SF benar' },
+  { round: 'Semi Final', base: '+20', multiplier: 'x2 = +40 jika QF perfect' },
+  { round: 'Final', base: '+30', multiplier: 'x3 = +90 jika SF perfect' },
 ]
 
 export default function Rules() {
@@ -18,21 +18,25 @@ export default function Rules() {
             Game berlaku mulai Quarter Final (8 Besar) sampai Final
           </p>
           <p className="text-sm text-kaluli-navy/80 leading-relaxed">
-            Setiap peserta hanya dapat memilih 1 pertandingan pada setiap ronde aktif. Setelah prediksi
-            dikirim, pilihan tidak dapat diubah. Peserta mendapatkan poin jika berhasil memprediksi
-            pemenang pertandingan dengan benar. Jika prediksi benar secara beruntun, peserta
-            berkesempatan mendapatkan multiplier poin di ronde berikutnya. Jika prediksi salah, peserta
-            tidak mendapatkan poin pada ronde tersebut dan multiplier akan di-reset. Peserta tetap dapat
-            mengikuti prediksi di ronde selanjutnya. Pemenang ditentukan berdasarkan total poin
-            tertinggi di akhir final. Jika terdapat total poin yang sama, pemenang ditentukan
-            berdasarkan streak prediksi benar terpanjang, jumlah prediksi benar terbanyak, waktu submit
-            tercepat, dan tie-breaker challenge jika diperlukan. Tidak ada sistem taruhan, undian, atau
-            pembelian wajib.
+            Peserta boleh memprediksi lebih dari 1 pertandingan pada ronde yang sedang aktif — bebas
+            pilih match mana saja yang mau diikuti. Prediksi berupa <b>skor akhir</b> (bukan cuma pilih
+            menang), pemenang otomatis dihitung dari skor yang diprediksi. Setelah prediksi dikirim
+            untuk sebuah match, pilihan itu tidak dapat diubah, dan setiap match hanya bisa diprediksi
+            sekali. Peserta mendapatkan poin dasar jika berhasil memprediksi pemenang dengan benar, plus
+            bonus tambahan jika skornya persis sama dengan hasil akhir. Jika peserta berhasil memprediksi
+            <b> seluruh</b> match yang diikuti di satu ronde dengan benar (perfect round), poin di ronde
+            berikutnya akan dikalikan multiplier. Jika ada satu saja prediksi yang salah di ronde
+            tersebut, multiplier untuk ronde berikutnya kembali normal. Peserta tetap dapat mengikuti
+            prediksi di ronde selanjutnya walau round sebelumnya tidak perfect. Pemenang ditentukan
+            berdasarkan total poin tertinggi di akhir final. Jika terdapat total poin yang sama,
+            pemenang ditentukan berdasarkan streak prediksi benar terpanjang, jumlah prediksi benar
+            terbanyak, waktu submit tercepat, dan tie-breaker challenge jika diperlukan. Tidak ada sistem
+            taruhan, undian, atau pembelian wajib.
           </p>
         </div>
 
         <h2 className="font-display font-bold text-kaluli-navy text-base mb-2.5">Sistem Poin</h2>
-        <div className="bg-white rounded-xl2 border border-kaluli-navy/10 shadow-sm overflow-hidden mb-5">
+        <div className="bg-white rounded-xl2 border border-kaluli-navy/10 shadow-sm overflow-hidden mb-2">
           {POINT_ROWS.map((row, i) => (
             <div
               key={row.round}
@@ -46,6 +50,10 @@ export default function Rules() {
             </div>
           ))}
         </div>
+        <p className="text-[11px] text-kaluli-navy/50 font-semibold mb-5 px-1">
+          🎯 Bonus +10 poin tambahan kalau skor yang kamu prediksi <b>persis sama</b> dengan hasil akhir
+          (di atas poin dasar menang di atas).
+        </p>
 
         <h2 className="font-display font-bold text-kaluli-navy text-base mb-2.5">Tie-Breaker</h2>
         <ol className="bg-white rounded-xl2 border border-kaluli-navy/10 shadow-sm p-4 flex flex-col gap-2 mb-5">

@@ -6,9 +6,8 @@ import { useApp } from '../lib/AppState.jsx'
 import { ROUND_LABELS } from '../lib/points.js'
 
 export default function Dashboard() {
-  const { user, matches, activeRound, myPredictionForRound, submitPrediction, logout } = useApp()
-  const [selectedMatchId, setSelectedMatchId] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { user, matches, activeRound, myPredictionForMatch, myPredictionsForRound, submitPrediction, logout } = useApp()
+  const [submitting, setSubmitting] = useState(null) // matchId currently submitting
   const [toast, setToast] = useState(null)
   const [error, setError] = useState('')
 
@@ -17,26 +16,27 @@ export default function Dashboard() {
     [matches, activeRound]
   )
 
-  const existingPrediction = myPredictionForRound(activeRound)
+  const roundPredictions = myPredictionsForRound(activeRound)
+  const submittedCount = roundPredictions.length
+  const totalMatches = roundMatches.length
 
-  const handleSubmit = async (matchId, winner) => {
+  const handleSubmit = async (matchId, scoreA, scoreB) => {
     setError('')
-    setSubmitting(true)
+    setSubmitting(matchId)
     try {
-      await submitPrediction(matchId, winner)
+      await submitPrediction(matchId, scoreA, scoreB)
       setToast('Prediction Submitted! Pick wisely, you can\u2019t change it later.')
       setTimeout(() => setToast(null), 3200)
     } catch (err) {
       setError(err.message || 'Gagal submit prediksi.')
     } finally {
-      setSubmitting(false)
-      setSelectedMatchId(null)
+      setSubmitting(null)
     }
   }
 
   return (
     <div className="pb-24">
-      <Header title={`Hi, ${user?.name?.split(' ')[0] || 'Kaluli Fan'} 👋`} subtitle="Pilih 1 match untuk ronde ini" />
+      <Header title={`Hi, ${user?.name?.split(' ')[0] || 'Kaluli Fan'} 👋`} subtitle="Pilih match & prediksi skornya" />
 
       <div className="px-6 pt-4">
         <div className="bg-kaluli-navy text-white rounded-xl2 p-4 flex items-center justify-between mb-5">
@@ -47,20 +47,14 @@ export default function Dashboard() {
           <span className="text-3xl">⚽</span>
         </div>
 
-        {existingPrediction && (
-          <div className="mb-5 rounded-xl2 border-2 border-kaluli-gold bg-kaluli-goldSoft/50 p-3.5 text-center">
-            <p className="text-xs font-bold text-kaluli-navy">Choose 1 match only ✓</p>
-            <p className="text-[11px] text-kaluli-navy/60 font-semibold mt-0.5">
-              Kamu sudah submit prediksi untuk {ROUND_LABELS[activeRound]}. Tunggu hasil match ya.
-            </p>
-          </div>
-        )}
-
-        {!existingPrediction && (
-          <p className="text-xs font-bold text-kaluli-navy/50 mb-4 text-center">
-            Choose 1 match only. Pick wisely, you can’t change it later.
+        <div className="mb-5 rounded-xl2 border-2 border-kaluli-gold bg-kaluli-goldSoft/50 p-3.5 text-center">
+          <p className="text-xs font-bold text-kaluli-navy">
+            {submittedCount} / {totalMatches} match sudah diprediksi
           </p>
-        )}
+          <p className="text-[11px] text-kaluli-navy/60 font-semibold mt-0.5">
+            Boleh prediksi lebih dari 1 match di ronde ini. Setiap match cuma bisa diprediksi sekali dan tidak bisa diubah.
+          </p>
+        </div>
 
         {error && <p className="text-xs font-bold text-kaluli-red mb-3 text-center">{error}</p>}
 
@@ -75,14 +69,9 @@ export default function Dashboard() {
               key={match.id}
               match={match}
               mode="pick"
-              selected={selectedMatchId === match.id}
-              onSelectMatch={setSelectedMatchId}
               onSubmitPrediction={handleSubmit}
-              userPrediction={
-                existingPrediction?.match_id === match.id ? existingPrediction : undefined
-              }
-              disabled={Boolean(existingPrediction) && existingPrediction.match_id !== match.id}
-              submitting={submitting}
+              userPrediction={myPredictionForMatch(match.id)}
+              submitting={submitting === match.id}
             />
           ))}
         </div>

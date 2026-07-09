@@ -2,10 +2,11 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppState.jsx'
 
 const STEPS = [
-  { icon: '🎯', text: 'Pilih 1 match dari ronde yang sedang aktif.' },
-  { icon: '⏱️', text: 'Submit prediksi sebelum kick-off.' },
-  { icon: '✅', text: 'Jika prediksi benar, dapat poin.' },
-  { icon: '🔥', text: 'Lanjut benar di ronde berikutnya, poin naik dengan multiplier.' },
+  { icon: '🎯', text: 'Pilih match dari ronde aktif — boleh lebih dari 1.' },
+  { icon: '🔢', text: 'Prediksi skor akhirnya, bukan cuma siapa yang menang.' },
+  { icon: '⏱️', text: 'Submit sebelum kick-off, tidak bisa diubah lagi.' },
+  { icon: '✅', text: 'Benar menang dapat poin, skor persis dapat bonus.' },
+  { icon: '🔥', text: 'Semua match di ronde itu benar? Poin ronde berikutnya kena multiplier.' },
   { icon: '🏆', text: 'Leaderboard tertinggi menang exclusive merch Kaluli.' },
 ]
 
@@ -33,7 +34,7 @@ export default function Landing() {
           </h1>
 
           <p className="text-white/75 text-sm leading-relaxed mb-7">
-            Pilih 1 match, prediksi pemenangnya, kumpulkan poin, dan menangkan exclusive merch dari Kaluli.
+            Pilih match, prediksi skornya, kumpulkan poin, dan menangkan exclusive merch dari Kaluli.
           </p>
 
           <button

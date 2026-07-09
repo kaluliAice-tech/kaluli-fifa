@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase, isSupabaseConfigured } from './supabaseClient'
 import { DUMMY_MATCHES, DUMMY_ACTIVE_ROUND, DUMMY_LEADERBOARD, DUMMY_USER_PREDICTIONS } from './dummyData'
-import { ROUNDS, calculatePoints, summarizeUserPredictions } from './points'
+import { ROUNDS, calculatePoints, summarizeUserPredictions, winnerFromScore } from './points'
 
 const AppContext = createContext(null)
 
@@ -9,6 +9,20 @@ const LS_USER_KEY = 'kaluli_user'
 const LS_MATCHES_KEY = 'kaluli_demo_matches'
 const LS_PREDICTIONS_KEY = 'kaluli_demo_predictions'
 const LS_ACTIVE_ROUND_KEY = 'kaluli_demo_active_round'
+const LS_DEMO_USERS_KEY = 'kaluli_demo_users' // demo-mode "database" of registered accounts
+
+// Hash a password with SHA-256 (via the browser's built-in Web Crypto API,
+// no extra dependency needed) before it's ever sent to Supabase. This is
+// NOT the same level of security as a proper backend using bcrypt/argon2
+// with per-user salt, but it's a meaningful step up from storing the raw
+// password, and needs no server component.
+async function hashPassword(password) {
+  const encoded = new TextEncoder().encode(password)
+  const digest = await crypto.subtle.digest('SHA-256', encoded)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 function readLocal(key, fallback) {
   try {
@@ -88,24 +102,86 @@ export function AppProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const register = useCallback(async ({ name, phone, email, instagram }) => {
+  const register = useCallback(async ({ name, username, password, phone, email, instagram }) => {
+    const passwordHash = await hashPassword(password)
+
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
         .from('users')
-        .insert({ name, phone, email: email || null, instagram: instagram || null })
+        .insert({
+          name,
+          username,
+          password_hash: passwordHash,
+          phone: phone || null,
+          email: email || null,
+          instagram: instagram || null,
+        })
         .select()
         .single()
-      if (error) throw error
-      setUser(data)
-      writeLocal(LS_USER_KEY, data)
-      await loadPredictions(data)
-      return data
+      if (error) {
+        if (error.code === '23505') throw new Error('Username sudah dipakai. Coba username lain atau login kalau ini akun kamu.')
+        throw error
+      }
+      const { password_hash, ...safeUser } = data
+      setUser(safeUser)
+      writeLocal(LS_USER_KEY, safeUser)
+      await loadPredictions(safeUser)
+      return safeUser
     }
-    const newUser = { id: `demo-${phone}`, name, phone, email: email || null, instagram: instagram || null }
-    setUser(newUser)
-    writeLocal(LS_USER_KEY, newUser)
-    await loadPredictions(newUser)
-    return newUser
+
+    // Demo mode: keep a small "users database" in localStorage so login
+    // can look accounts up by username later.
+    const demoUsers = readLocal(LS_DEMO_USERS_KEY, [])
+    if (demoUsers.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+      throw new Error('Username sudah dipakai. Coba username lain atau login kalau ini akun kamu.')
+    }
+    const newUser = {
+      id: `demo-${username}`,
+      name,
+      username,
+      password_hash: passwordHash,
+      phone: phone || null,
+      email: email || null,
+      instagram: instagram || null,
+    }
+    writeLocal(LS_DEMO_USERS_KEY, [...demoUsers, newUser])
+    const { password_hash, ...safeUser } = newUser
+    setUser(safeUser)
+    writeLocal(LS_USER_KEY, safeUser)
+    await loadPredictions(safeUser)
+    return safeUser
+  }, [loadPredictions])
+
+  const login = useCallback(async ({ username, password }) => {
+    const passwordHash = await hashPassword(password)
+
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('username', username)
+        .maybeSingle()
+      if (error) throw error
+      if (!data || data.password_hash !== passwordHash) {
+        throw new Error('Username atau password salah.')
+      }
+      const { password_hash, ...safeUser } = data
+      setUser(safeUser)
+      writeLocal(LS_USER_KEY, safeUser)
+      await loadPredictions(safeUser)
+      return safeUser
+    }
+
+    const demoUsers = readLocal(LS_DEMO_USERS_KEY, [])
+    const found = demoUsers.find((u) => u.username.toLowerCase() === username.toLowerCase())
+    if (!found || found.password_hash !== passwordHash) {
+      throw new Error('Username atau password salah.')
+    }
+    const { password_hash, ...safeUser } = found
+    setUser(safeUser)
+    writeLocal(LS_USER_KEY, safeUser)
+    await loadPredictions(safeUser)
+    return safeUser
   }, [loadPredictions])
 
   const logout = useCallback(() => {
@@ -114,24 +190,40 @@ export function AppProvider({ children }) {
     setPredictions([])
   }, [])
 
-  const myPredictionForRound = useCallback(
-    (round) => predictions.find((p) => p.round === round),
+  // A user can now predict MULTIPLE matches within the same active round.
+  // Look up an existing prediction by match, not by round.
+  const myPredictionForMatch = useCallback(
+    (matchId) => predictions.find((p) => p.match_id === matchId),
+    [predictions]
+  )
+
+  const myPredictionsForRound = useCallback(
+    (round) => predictions.filter((p) => p.round === round),
     [predictions]
   )
 
   const getMatchById = useCallback((id) => matches.find((m) => m.id === id), [matches])
 
   const submitPrediction = useCallback(
-    async (matchId, predictedWinner) => {
+    async (matchId, scoreA, scoreB) => {
       if (!user) throw new Error('Kamu harus register/login dulu.')
       const match = getMatchById(matchId)
       if (!match) throw new Error('Match tidak ditemukan.')
       if (match.round !== activeRound) throw new Error('Ronde ini belum aktif.')
-      if (myPredictionForRound(match.round)) {
-        throw new Error('Kamu sudah submit prediksi untuk ronde ini.')
+      if (myPredictionForMatch(matchId)) {
+        throw new Error('Kamu sudah submit prediksi untuk match ini.')
       }
       if (new Date() >= new Date(match.kickoff_time) || match.status !== 'upcoming') {
         throw new Error('Prediction locked. Match sudah kick-off.')
+      }
+      const a = Number(scoreA)
+      const b = Number(scoreB)
+      if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) {
+        throw new Error('Skor harus berupa angka bulat 0 atau lebih.')
+      }
+      const predictedWinner = winnerFromScore(match.team_a, match.team_b, a, b)
+      if (!predictedWinner) {
+        throw new Error('Skor tidak boleh seri — ini babak gugur, harus ada pemenang.')
       }
 
       const basePrediction = {
@@ -139,7 +231,10 @@ export function AppProvider({ children }) {
         match_id: matchId,
         round: match.round,
         predicted_winner: predictedWinner,
+        predicted_score_a: a,
+        predicted_score_b: b,
         is_correct: null,
+        is_exact_score: null,
         points_earned: null,
         multiplier: 1,
         submitted_at: new Date().toISOString(),
@@ -163,15 +258,10 @@ export function AppProvider({ children }) {
       setPredictions((prev) => [...prev, newPrediction])
       return newPrediction
     },
-    [user, activeRound, getMatchById, myPredictionForRound]
+    [user, activeRound, getMatchById, myPredictionForMatch]
   )
 
   // ---- Admin actions (demo mode only persists to localStorage) ----
-
-  const persistMatches = useCallback((next) => {
-    setMatches(next)
-    if (!isSupabaseConfigured) writeLocal(LS_MATCHES_KEY, next)
-  }, [])
 
   const adminUpsertMatch = useCallback(
     async (match) => {
@@ -204,8 +294,19 @@ export function AppProvider({ children }) {
     setActiveRound(round)
   }, [])
 
-  // Recalculates is_correct / points_earned for all predictions tied to a finished match.
-  // In demo mode this only affects predictions stored locally in this browser.
+  // Was this user's round "perfect" (every prediction in that round had the
+  // correct winner)? Used to decide whether the NEXT round's correct picks
+  // get the streak multiplier. Returns false if the user made no
+  // predictions in that round, or if any pick in it was wrong / undecided.
+  function isPerfectRound(allUserPredictions, round) {
+    const picks = allUserPredictions.filter((p) => p.round === round)
+    if (picks.length === 0) return false
+    return picks.every((p) => p.is_correct === true)
+  }
+
+  // Recalculates is_correct / is_exact_score / points_earned for all
+  // predictions tied to a finished match. In demo mode this only affects
+  // predictions stored locally in this browser.
   const adminCalculatePoints = useCallback(
     async (matchId) => {
       const match = getMatchById(matchId)
@@ -215,26 +316,32 @@ export function AppProvider({ children }) {
 
       if (isSupabaseConfigured) {
         // In production, prefer doing this recompute inside a Postgres
-        // function/RPC (see supabase/schema.sql) for atomicity. This client-side
-        // version fetches predictions for the match, recalculates using each
-        // user's prior-round result, and writes points_earned/is_correct back.
+        // function/RPC for atomicity. This client-side version fetches
+        // predictions for the match, recalculates using each user's full
+        // prediction history (to check for a "perfect" previous round),
+        // and writes points_earned/is_correct/is_exact_score back.
         const { data: preds, error } = await supabase.from('predictions').select('*').eq('match_id', matchId)
         if (error) throw error
         for (const p of preds) {
-          const { data: priorPreds } = await supabase
-            .from('predictions')
-            .select('round, is_correct')
-            .eq('user_id', p.user_id)
-            .neq('id', p.id)
           const roundIdx = ROUNDS.indexOf(p.round)
-          const previousCorrect = (priorPreds || []).some(
-            (pp) => ROUNDS.indexOf(pp.round) === roundIdx - 1 && pp.is_correct === true
-          )
-          const isCorrect = p.predicted_winner === match.winner_team
-          const { points, multiplier } = calculatePoints(p.round, isCorrect, previousCorrect)
+          let perfectPreviousRound = false
+          if (roundIdx > 0) {
+            const previousRound = ROUNDS[roundIdx - 1]
+            const { data: userPreds } = await supabase
+              .from('predictions')
+              .select('round, is_correct')
+              .eq('user_id', p.user_id)
+            perfectPreviousRound = isPerfectRound(userPreds || [], previousRound)
+          }
+          const isCorrectWinner = p.predicted_winner === match.winner_team
+          const isExactScore =
+            isCorrectWinner &&
+            p.predicted_score_a === match.team_a_score &&
+            p.predicted_score_b === match.team_b_score
+          const { points, multiplier } = calculatePoints(p.round, isCorrectWinner, isExactScore, perfectPreviousRound)
           await supabase
             .from('predictions')
-            .update({ is_correct: isCorrect, points_earned: points, multiplier })
+            .update({ is_correct: isCorrectWinner, is_exact_score: isExactScore, points_earned: points, multiplier })
             .eq('id', p.id)
         }
         await loadLeaderboard()
@@ -243,27 +350,30 @@ export function AppProvider({ children }) {
       }
 
       const all = readLocal(LS_PREDICTIONS_KEY, DUMMY_USER_PREDICTIONS)
-      // group by user, sort by round order, recompute sequentially
       const byUser = {}
       for (const p of all) {
         byUser[p.user_id] = byUser[p.user_id] || []
         byUser[p.user_id].push(p)
       }
-      const roundIndex = (r) => ROUNDS.indexOf(r)
+
       const updated = []
       for (const uid of Object.keys(byUser)) {
-        const userPreds = byUser[uid].slice().sort((a, b) => roundIndex(a.round) - roundIndex(b.round))
-        let previousCorrect = false
+        const userPreds = byUser[uid]
         for (const p of userPreds) {
           if (p.match_id === matchId) {
-            const isCorrect = p.predicted_winner === match.winner_team
-            const { points, multiplier } = calculatePoints(p.round, isCorrect, previousCorrect)
-            p.is_correct = isCorrect
+            const roundIdx = ROUNDS.indexOf(p.round)
+            const perfectPreviousRound = roundIdx > 0 ? isPerfectRound(userPreds, ROUNDS[roundIdx - 1]) : false
+            const isCorrectWinner = p.predicted_winner === match.winner_team
+            const isExactScore =
+              isCorrectWinner &&
+              p.predicted_score_a === match.team_a_score &&
+              p.predicted_score_b === match.team_b_score
+            const { points, multiplier } = calculatePoints(p.round, isCorrectWinner, isExactScore, perfectPreviousRound)
+            p.is_correct = isCorrectWinner
+            p.is_exact_score = isExactScore
             p.points_earned = points
             p.multiplier = multiplier
           }
-          if (p.is_correct === true) previousCorrect = true
-          else if (p.is_correct === false) previousCorrect = false
           updated.push(p)
         }
       }
@@ -275,9 +385,7 @@ export function AppProvider({ children }) {
       DUMMY_LEADERBOARD.forEach((l) => (nameByUserId[l.user_id] = l.name))
       if (user) nameByUserId[user.id] = user.name
       const newLeaderboard = Object.keys(byUser).map((uid) => {
-        const stats = summarizeUserPredictions(
-          byUser[uid].slice().sort((a, b) => roundIndex(a.round) - roundIndex(b.round))
-        )
+        const stats = summarizeUserPredictions(byUser[uid])
         return {
           user_id: uid,
           name: nameByUserId[uid] || 'Kaluli Fan',
@@ -303,8 +411,10 @@ export function AppProvider({ children }) {
       leaderboard,
       activeRound,
       register,
+      login,
       logout,
-      myPredictionForRound,
+      myPredictionForMatch,
+      myPredictionsForRound,
       getMatchById,
       submitPrediction,
       adminUpsertMatch,
@@ -324,8 +434,10 @@ export function AppProvider({ children }) {
       leaderboard,
       activeRound,
       register,
+      login,
       logout,
-      myPredictionForRound,
+      myPredictionForMatch,
+      myPredictionsForRound,
       getMatchById,
       submitPrediction,
       adminUpsertMatch,

@@ -15,7 +15,9 @@ create extension if not exists "pgcrypto";
 create table if not exists public.users (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  phone text not null unique,
+  username text not null unique,
+  password_hash text not null, -- SHA-256 hash, hashed client-side before insert (see notes below)
+  phone text,
   email text,
   instagram text,
   created_at timestamptz not null default now()
@@ -51,12 +53,16 @@ create table if not exists public.predictions (
   match_id text not null references public.matches(id) on delete cascade,
   round text not null check (round in ('quarter_final','semi_final','final')),
   predicted_winner text not null,
-  is_correct boolean, -- null until match is finished + points recalculated
+  predicted_score_a int not null,
+  predicted_score_b int not null,
+  is_correct boolean, -- winner correct? null until match is finished + points recalculated
+  is_exact_score boolean, -- predicted score matches final score exactly
   points_earned int,
   multiplier int not null default 1,
   submitted_at timestamptz not null default now(),
-  -- one prediction per user per round (enforces "1 match per active round")
-  unique (user_id, round)
+  -- one prediction per match per user (users can now predict MULTIPLE
+  -- matches within the same active round, just not the same match twice)
+  unique (user_id, match_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -89,6 +95,8 @@ on conflict (key) do nothing;
 create or replace function public.recompute_leaderboard_for_user(p_user_id uuid)
 returns void
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   rec record;
@@ -104,7 +112,7 @@ begin
     select p.*
     from public.predictions p
     where p.user_id = p_user_id
-    order by array_position(round_order, p.round)
+    order by array_position(round_order, p.round), p.submitted_at
   loop
     last_submit := rec.submitted_at;
     if rec.is_correct is true then
@@ -160,9 +168,23 @@ create policy "matches are public read" on public.matches for select using (true
 create policy "leaderboard is public read" on public.leaderboard for select using (true);
 create policy "settings are public read" on public.settings for select using (true);
 
--- users: anyone can insert (register); read limited to own row via app-level
--- filtering (since this app uses simple phone-based accounts, not Supabase
--- Auth, RLS here stays permissive — tighten with Supabase Auth for production).
+-- users: anyone can insert (register); read is public because the login
+-- flow does a client-side username lookup + password hash comparison using
+-- the anon key (see src/lib/AppState.jsx).
+--
+-- ⚠️ SECURITY NOTE: because this table is publicly SELECT-able, the
+-- password_hash column is technically fetchable by anyone with the anon
+-- key (e.g. by calling the Supabase REST API directly), which means a
+-- determined attacker could attempt to crack password hashes offline.
+-- Passwords are SHA-256 hashed (not stored in plain text) which helps, but
+-- this is NOT the same security bar as a real auth system. This tradeoff
+-- is acceptable for a low-stakes campaign (prizes = ice cream merch, not
+-- money/financial accounts), but if you want stronger guarantees, migrate
+-- login/register to go through a Netlify Function using the service_role
+-- key (same pattern as netlify/functions/sync-scores.js) so password_hash
+-- never has to be readable via the anon key at all — or migrate to
+-- Supabase Auth, which is built exactly for this and handles hashing,
+-- sessions, and password reset for you.
 create policy "anyone can register" on public.users for insert with check (true);
 create policy "users are readable" on public.users for select using (true);
 

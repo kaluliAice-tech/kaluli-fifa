@@ -21,9 +21,17 @@ h1, h2, h3, h4, .font-display {
   margin-left: auto;
   margin-right: auto;
   min-height: 100vh;
-  background: #FFF9F3;
   position: relative;
   box-shadow: 0 0 60px rgba(11, 17, 48, 0.08);
+
+  /* Full-page background image. Put your image at public/background.jpg
+     (any name is fine, just update the path below). The linear-gradient
+     overlay lightens the image so white cards + dark text on top stay
+     readable — tweak the opacity numbers (0.75 / 0.55) to taste. */
+  background-image: linear-gradient(rgba(255, 249, 243, 0.75), rgba(255, 249, 243, 0.55)), url('/background.jpg');
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
 }
 
 @media (min-width: 481px) {

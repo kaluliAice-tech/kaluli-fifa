@@ -92,10 +92,16 @@ export default function Bracket() {
                       )}
 
                       {pick && (
+                        <p className="text-center text-[11px] font-bold text-kaluli-navy/50 mt-1.5">
+                          Prediksi kamu: {pick.predicted_score_a} - {pick.predicted_score_b}
+                        </p>
+                      )}
+
+                      {pick && (
                         <div className="mt-2 flex justify-center">
                           {pick.is_correct === true && (
                             <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
-                              ✓ Correct
+                              {pick.is_exact_score ? '✓ Correct · Exact Score 🎯' : '✓ Correct'}
                             </span>
                           )}
                           {pick.is_correct === false && (

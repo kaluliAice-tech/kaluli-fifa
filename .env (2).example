@@ -1,0 +1,20 @@
+# Supabase (frontend - safe to expose, protected by RLS)
+# Buat project di https://supabase.com lalu ambil dari Project Settings > API
+VITE_SUPABASE_URL=https://ddxbyfhfszompzogsjnm.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkeGJ5Zmhmc3pvbXB6b2dzam5tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTczMjQsImV4cCI6MjA5OTA3MzMyNH0.-mhqpVbfpXBJEbizN6Au73cHsmSYGJFh6u58TMrW9kM
+
+# Admin panel (proteksi password sederhana untuk /admin)
+VITE_ADMIN_PASSWORD=ganti-password-ini
+
+# --- Server-side only (Netlify Functions). JANGAN pakai prefix VITE_ untuk
+# variabel di bawah ini, supaya tidak ter-bundle ke frontend / kelihatan
+# oleh browser. Ini dipakai oleh netlify/functions/sync-scores.js. ---
+
+# Sama seperti VITE_SUPABASE_URL di atas, tapi tanpa prefix VITE_
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+# Project Settings > API > service_role key (RAHASIA, jangan pernah expose ke frontend)
+SUPABASE_SERVICE_ROLE_KEY=YOUR-SUPABASE-SERVICE-ROLE-KEY
+
+# API-Football (api-sports.io) - daftar gratis di https://dashboard.api-football.com/register
+SPORTS_API_KEY=YOUR-API-FOOTBALL-KEY
+SPORTS_API_PROVIDER=api-football

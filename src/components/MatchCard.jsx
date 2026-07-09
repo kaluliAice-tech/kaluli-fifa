@@ -31,20 +31,23 @@ const STATUS_LABELS = {
 
 /**
  * MatchCard
- * mode="pick"    -> dashboard flow: user can select this match then choose a winner
+ * mode="pick"    -> dashboard flow: user can predict the SCORE of this
+ *                   match (winner is derived from the score). Multiple
+ *                   matches in the same round can each be picked.
  * mode="display" -> read-only, used in bracket view
  */
 export default function MatchCard({
   match,
   mode = 'display',
-  selected = false,
-  onSelectMatch,
   onSubmitPrediction,
   userPrediction,
   disabled = false,
   submitting = false,
 }) {
-  const [choosingWinner, setChoosingWinner] = useState(false)
+  const [predicting, setPredicting] = useState(false)
+  const [scoreA, setScoreA] = useState('')
+  const [scoreB, setScoreB] = useState('')
+  const [localError, setLocalError] = useState('')
 
   const isFinished = match.status === 'finished'
   const isLocked = match.status === 'locked' || new Date() >= new Date(match.kickoff_time)
@@ -53,22 +56,32 @@ export default function MatchCard({
   const showPredictedBadge = userPrediction
   const predictedCorrect = userPrediction?.is_correct === true
   const predictedWrong = userPrediction?.is_correct === false
+  const predictedExact = userPrediction?.is_exact_score === true
 
-  const handlePickClick = () => {
+  const handleStartPredict = () => {
     if (disabled || isLocked) return
-    onSelectMatch?.(match.id)
-    setChoosingWinner(true)
+    setPredicting(true)
+    setLocalError('')
   }
 
-  const handleChooseWinner = (team) => {
-    onSubmitPrediction?.(match.id, team)
-    setChoosingWinner(false)
+  const handleSubmit = () => {
+    setLocalError('')
+    if (scoreA === '' || scoreB === '') {
+      setLocalError('Isi skor kedua tim dulu ya.')
+      return
+    }
+    if (Number(scoreA) === Number(scoreB)) {
+      setLocalError('Skor tidak boleh seri — babak gugur harus ada pemenang.')
+      return
+    }
+    onSubmitPrediction?.(match.id, scoreA, scoreB)
+    setPredicting(false)
   }
 
   return (
     <div
       className={`rounded-xl2 bg-white border ${
-        selected ? 'border-kaluli-red shadow-card' : 'border-kaluli-navy/10 shadow-sm'
+        predicting ? 'border-kaluli-red shadow-card' : 'border-kaluli-navy/10 shadow-sm'
       } p-4 animate-slideUp`}
     >
       <div className="flex items-center justify-between mb-3">
@@ -105,7 +118,10 @@ export default function MatchCard({
       )}
 
       {showPredictedBadge && (
-        <div className="mt-3 flex items-center justify-center">
+        <div className="mt-3 flex flex-col items-center gap-1.5">
+          <span className="text-[11px] font-bold text-kaluli-navy/60">
+            Skor Prediksi Kamu: {userPrediction.predicted_score_a} - {userPrediction.predicted_score_b}
+          </span>
           <span
             className={`text-[11px] font-bold px-3 py-1 rounded-full ${
               predictedCorrect
@@ -116,40 +132,72 @@ export default function MatchCard({
             }`}
           >
             {predictedCorrect
-              ? '✓ Correct Prediction'
+              ? predictedExact
+                ? '✓ Correct Prediction · Exact Score! 🎯'
+                : '✓ Correct Prediction'
               : predictedWrong
               ? '✕ Wrong Prediction'
-              : `Your Pick: ${userPrediction.predicted_winner} · Waiting for Match Result`}
+              : 'Waiting for Match Result'}
           </span>
         </div>
       )}
 
       {mode === 'pick' && !userPrediction && (
         <div className="mt-3">
-          {!choosingWinner ? (
+          {!predicting ? (
             <button
-              onClick={handlePickClick}
+              onClick={handleStartPredict}
               disabled={disabled || isLocked}
               className="w-full py-2.5 rounded-xl bg-kaluli-navy text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
             >
               {isLocked ? 'Locked' : 'Pick This Match'}
             </button>
           ) : (
-            <div className="grid grid-cols-2 gap-2 animate-pop">
-              <button
-                onClick={() => handleChooseWinner(match.team_a)}
-                disabled={submitting}
-                className="py-2.5 rounded-xl bg-kaluli-red text-white text-xs font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
-              >
-                Predict {match.team_a} Win
-              </button>
-              <button
-                onClick={() => handleChooseWinner(match.team_b)}
-                disabled={submitting}
-                className="py-2.5 rounded-xl bg-kaluli-red text-white text-xs font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
-              >
-                Predict {match.team_b} Win
-              </button>
+            <div className="animate-pop">
+              <p className="text-[11px] font-bold text-kaluli-navy/60 text-center mb-2">Prediksi skor akhir:</p>
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] font-bold text-kaluli-navy/50 truncate max-w-[80px]">{match.team_a}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={scoreA}
+                    onChange={(e) => setScoreA(e.target.value)}
+                    className="w-14 h-12 text-center text-lg font-display font-extrabold rounded-xl border-2 border-kaluli-navy/15 focus:border-kaluli-red outline-none"
+                  />
+                </div>
+                <span className="text-kaluli-navy/30 font-extrabold pt-5">:</span>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-[10px] font-bold text-kaluli-navy/50 truncate max-w-[80px]">{match.team_b}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={scoreB}
+                    onChange={(e) => setScoreB(e.target.value)}
+                    className="w-14 h-12 text-center text-lg font-display font-extrabold rounded-xl border-2 border-kaluli-navy/15 focus:border-kaluli-red outline-none"
+                  />
+                </div>
+              </div>
+
+              {localError && <p className="text-[11px] font-bold text-kaluli-red text-center mb-2">{localError}</p>}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setPredicting(false)}
+                  className="py-2.5 rounded-xl bg-kaluli-mist text-kaluli-navy/60 text-xs font-bold"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="py-2.5 rounded-xl bg-kaluli-red text-white text-xs font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
+                >
+                  Submit Prediksi
+                </button>
+              </div>
             </div>
           )}
         </div>

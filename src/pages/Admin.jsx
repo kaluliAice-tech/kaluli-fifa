@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import { useApp } from '../lib/AppState.jsx'
 import { ROUNDS, ROUND_LABELS } from '../lib/points.js'
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient.js'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'kaluli-admin'
 
@@ -24,6 +25,7 @@ export default function Admin() {
   const [draft, setDraft] = useState(emptyDraft)
   const [message, setMessage] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   if (!unlocked) {
     return (
@@ -92,6 +94,58 @@ export default function Admin() {
     }
   }
 
+  const handleExportCSV = async () => {
+    if (!isSupabaseConfigured) {
+      setMessage('Export CSV butuh Supabase aktif (tidak tersedia di preview/demo mode).')
+      return
+    }
+    setExporting(true)
+    setMessage('Menyiapkan file CSV...')
+    try {
+      const [{ data: users, error: usersError }, { data: leaderboard, error: lbError }] = await Promise.all([
+        supabase.from('users').select('id, name, username, phone, email, instagram, created_at'),
+        supabase.from('leaderboard').select('*'),
+      ])
+      if (usersError) throw usersError
+      if (lbError) throw lbError
+
+      const lbByUserId = {}
+      for (const row of leaderboard || []) lbByUserId[row.user_id] = row
+
+      const headers = [
+        'Nama', 'Username', 'No. WhatsApp', 'Email', 'Instagram',
+        'Total Poin', 'Prediksi Benar', 'Streak Terpanjang', 'Streak Sekarang', 'Tanggal Daftar',
+      ]
+      const csvEscape = (val) => {
+        const s = val === null || val === undefined ? '' : String(val)
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const rows = (users || []).map((u) => {
+        const lb = lbByUserId[u.id] || {}
+        return [
+          u.name, u.username, u.phone || '', u.email || '', u.instagram || '',
+          lb.total_points ?? 0, lb.correct_predictions ?? 0, lb.longest_streak ?? 0, lb.current_streak ?? 0,
+          u.created_at ? new Date(u.created_at).toLocaleString('id-ID') : '',
+        ]
+      })
+      const csvContent = [headers, ...rows].map((r) => r.map(csvEscape).join(',')).join('\n')
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `kaluli-peserta-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      setMessage(`Berhasil export ${rows.length} peserta ke CSV.`)
+    } catch (err) {
+      setMessage(err.message || 'Gagal export CSV.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleSyncFromApi = async () => {
     setSyncing(true)
     setMessage('Sinkronisasi data dari API sedang berjalan...')
@@ -133,6 +187,21 @@ export default function Admin() {
             className="w-full py-2.5 rounded-xl bg-kaluli-navy text-white font-bold text-sm disabled:opacity-50"
           >
             {syncing ? 'Sinkronisasi...' : '🔄 Sync dari API'}
+          </button>
+        </section>
+
+        {/* Export participant data */}
+        <section className="bg-white rounded-xl2 border border-kaluli-navy/10 shadow-sm p-4 mb-5">
+          <h2 className="font-display font-bold text-kaluli-navy text-sm mb-1">Export Data Peserta</h2>
+          <p className="text-[11px] text-kaluli-navy/50 font-semibold mb-3">
+            Download semua peserta (nama, kontak, poin) sebagai file CSV — bisa langsung dibuka di Excel atau di-import ke Google Sheets.
+          </p>
+          <button
+            onClick={handleExportCSV}
+            disabled={exporting}
+            className="w-full py-2.5 rounded-xl bg-kaluli-gold text-kaluli-navy font-bold text-sm disabled:opacity-50"
+          >
+            {exporting ? 'Menyiapkan...' : '📥 Export ke CSV'}
           </button>
         </section>
 

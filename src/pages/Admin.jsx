@@ -6,6 +6,30 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient.js'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'kaluli-admin'
 
+// The datetime-local <input> needs a naive "YYYY-MM-DDTHH:mm" string (no
+// timezone offset) or it silently fails to display/parse the value. Since
+// this whole app works in WIB (Asia/Jakarta, UTC+7), these helpers convert
+// between that naive input format and the full ISO string with "+07:00"
+// that's actually stored in the database — so editing an existing match's
+// kickoff time shows the correct WIB value, and saving always writes back
+// a proper WIB-offset timestamp instead of an ambiguous one.
+function isoToWibInputValue(iso) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const wibMs = date.getTime() + 7 * 60 * 60 * 1000
+  const wib = new Date(wibMs)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${wib.getUTCFullYear()}-${pad(wib.getUTCMonth() + 1)}-${pad(wib.getUTCDate())}T${pad(wib.getUTCHours())}:${pad(wib.getUTCMinutes())}`
+}
+
+function wibInputValueToIso(localValue) {
+  if (!localValue) return null
+  // localValue looks like "2026-07-11T15:00" — treat it as WIB wall-clock
+  // time and attach the +07:00 offset explicitly.
+  return `${localValue}:00+07:00`
+}
+
 const emptyDraft = {
   id: '',
   round: 'quarter_final',
@@ -62,6 +86,7 @@ export default function Admin() {
       await adminUpsertMatch({
         ...draft,
         id,
+        kickoff_time: wibInputValueToIso(draft.kickoff_time),
         team_a_score: draft.team_a_score !== undefined && draft.team_a_score !== '' ? Number(draft.team_a_score) : null,
         team_b_score: draft.team_b_score !== undefined && draft.team_b_score !== '' ? Number(draft.team_b_score) : null,
         winner_team: draft.winner_team || null,
@@ -74,7 +99,15 @@ export default function Admin() {
     }
   }
 
-  const loadForEdit = (m) => setDraft({ ...emptyDraft, ...m, team_a_score: m.team_a_score ?? '', team_b_score: m.team_b_score ?? '', next_match_id: m.next_match_id || '' })
+  const loadForEdit = (m) =>
+    setDraft({
+      ...emptyDraft,
+      ...m,
+      kickoff_time: isoToWibInputValue(m.kickoff_time),
+      team_a_score: m.team_a_score ?? '',
+      team_b_score: m.team_b_score ?? '',
+      next_match_id: m.next_match_id || '',
+    })
 
   const handleUpdateField = async (match, field, value) => {
     try {
@@ -243,7 +276,10 @@ export default function Admin() {
             <input placeholder="Score A" value={draft.team_a_score ?? ''} onChange={updateDraft('team_a_score')} className="field" />
             <input placeholder="Score B" value={draft.team_b_score ?? ''} onChange={updateDraft('team_b_score')} className="field" />
             <input placeholder="Winner (nama tim persis)" value={draft.winner_team ?? ''} onChange={updateDraft('winner_team')} className="col-span-2 field" />
-            <input type="datetime-local" value={draft.kickoff_time} onChange={updateDraft('kickoff_time')} className="col-span-2 field" />
+            <div className="col-span-2">
+              <p className="text-[10px] font-bold text-kaluli-navy/40 mb-1">Kickoff (waktu WIB)</p>
+              <input type="datetime-local" value={draft.kickoff_time} onChange={updateDraft('kickoff_time')} className="w-full field" />
+            </div>
             <input placeholder="Next match ID" value={draft.next_match_id} onChange={updateDraft('next_match_id')} className="col-span-2 field" />
             <button className="col-span-2 py-2.5 rounded-xl bg-kaluli-red text-white font-bold mt-1">Simpan Match</button>
           </form>
